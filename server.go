@@ -24,6 +24,18 @@ func (server *SOCKS5Server) ServeSOCKS5Conn(conn net.Conn) {
 		return
 	}
 
+	// Before processing the request, resolve the destination address
+	// TODO: add a custom DNS resolver support
+	if req.DestAddr.Type == AddrTypeDomain {
+		ip, err := net.ResolveIPAddr("ip", req.DestAddr.FQDN)
+		if err != nil {
+			err = fmt.Errorf("failed to resolve domain %s: %v", req.DestAddr.FQDN, err)
+			server.handleError(conn, err)
+			return
+		}
+		req.DestAddr.IP = ip.IP
+	}
+
 	// Handle the request based on the command
 	switch req.Cmd {
 	case CmdConnect:
