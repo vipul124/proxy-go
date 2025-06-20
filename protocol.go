@@ -69,8 +69,9 @@ func (a *Address) ToString() string {
 type SOCKS5Request struct {
 	Version    byte
 	Cmd        byte
-	ClientAddr *Address
-	DestAddr   *Address
+	ClientAddr *Address // Address of the client making the request
+	BindAddr   *Address // Address from which the server will relay data to target
+	DestAddr   *Address // Address of the target destination
 	ClientConn net.Conn
 }
 

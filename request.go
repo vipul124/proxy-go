@@ -35,6 +35,22 @@ func parseSOCKS5Request(conn net.Conn) (*SOCKS5Request, error) {
 		return nil, err
 	}
 
+	// Parse the Bind address and port
+	BindAddr := &Address{}
+	if local, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+		BindAddr.IP = local.IP
+		BindAddr.Port = uint16(local.Port)
+	}
+
+	if BindAddr.IP.To4() != nil {
+		BindAddr.Type = AddrTypeIPv4
+	} else if BindAddr.IP.To16() != nil {
+		BindAddr.Type = AddrTypeIPv6
+	} else {
+		err := fmt.Errorf("invalid local address type: %s", BindAddr.IP.String())
+		return nil, err
+	}
+
 	// Parse the Destination address and port
 	addrType := make([]byte, 1)
 	if _, err := conn.Read(addrType); err != nil {
@@ -79,6 +95,7 @@ func parseSOCKS5Request(conn net.Conn) (*SOCKS5Request, error) {
 				Version:    SOCKS5Version,
 				Cmd:        header[1],
 				ClientAddr: ClientAddr,
+				BindAddr:   BindAddr,
 				DestAddr:   addr,
 				ClientConn: conn,
 			},
@@ -105,6 +122,7 @@ func parseSOCKS5Request(conn net.Conn) (*SOCKS5Request, error) {
 		Version:    header[0],
 		Cmd:        header[1],
 		ClientAddr: ClientAddr,
+		BindAddr:   BindAddr,
 		DestAddr:   addr,
 		ClientConn: conn,
 	}, nil
@@ -117,10 +135,10 @@ func sendSOCKS5Response(conn net.Conn, response *SOCKS5Response) error {
 		SOCKS5Version,
 		response.RespCode,
 		0x00,
-		response.Request.DestAddr.Type,
+		response.Request.BindAddr.Type,
 	}
-	resp = append(resp, response.Request.DestAddr.ToByte()...)
-	resp = append(resp, byte(response.Request.DestAddr.Port>>8), byte(response.Request.DestAddr.Port&0xFF))
+	resp = append(resp, response.Request.BindAddr.ToByte()...)
+	resp = append(resp, byte(response.Request.BindAddr.Port>>8), byte(response.Request.BindAddr.Port&0xFF))
 
 	// Send the response
 	_, err := conn.Write(resp)
