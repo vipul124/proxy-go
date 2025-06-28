@@ -30,6 +30,7 @@ const (
 	ReplyTTLExpired              = 0x06 // TTL expired
 	ReplyCommandNotSupported     = 0x07 // Command not supported
 	ReplyAddressTypeNotSupported = 0x08 // Address type not supported
+	ReplyCloseConnection         = 0x09 // Close connection
 
 	// Authentication Methods
 	AuthNoMethod            = 0x00 // No authentication required
@@ -43,6 +44,13 @@ type Address struct {
 	FQDN string
 	IP   net.IP
 	Port uint16
+}
+
+var DefaultAddress Address = Address{
+	Type: AddrTypeIPv4,
+	FQDN: "",
+	IP:   net.IPv4(0, 0, 0, 0),
+	Port: 0,
 }
 
 func (a *Address) ToByte() []byte {
@@ -78,5 +86,6 @@ type SOCKS5Request struct {
 // Response Body Structure
 type SOCKS5Response struct {
 	Request  *SOCKS5Request
+	BindAddr *Address
 	RespCode byte
 }

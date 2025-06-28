@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func handleConnect(req *SOCKS5Request) error {
+func handleConnect(req *SOCKS5Request) (byte, error) {
 	destConn, err := net.Dial("tcp", req.DestAddr.ToString())
 	if err != nil {
 		msg := err.Error()
@@ -21,21 +21,16 @@ func handleConnect(req *SOCKS5Request) error {
 			respCode = ReplyHostUnreachable
 		}
 
-		if err := sendSOCKS5Response(req.ClientConn, &SOCKS5Response{
-			Request:  req,
-			RespCode: respCode,
-		}); err != nil {
-			return fmt.Errorf(("failed to send reply: %v"), err)
-		}
-		return fmt.Errorf("failed to connect to %v: %v", req.DestAddr.ToString(), err)
+		return respCode, fmt.Errorf("failed to connect to %v: %v", req.DestAddr.ToString(), err)
 	}
 	defer destConn.Close()
 
 	if err := sendSOCKS5Response(req.ClientConn, &SOCKS5Response{
 		Request:  req,
+		BindAddr: req.BindAddr,
 		RespCode: ReplySucceeded,
 	}); err != nil {
-		return fmt.Errorf("failed to send reply: %v", err)
+		return ReplyCloseConnection, fmt.Errorf("failed to send reply: %v", err)
 	}
 
 	// Start relaying data between client and destination
@@ -45,10 +40,10 @@ func handleConnect(req *SOCKS5Request) error {
 
 	for i := 0; i < 2; i++ {
 		if err := <-errChannel; err != nil {
-			return fmt.Errorf("error during data relay: %v", err)
+			return ReplyCloseConnection, fmt.Errorf("error during data relay: %v", err)
 		}
 	}
-	return nil
+	return 0x00, nil
 }
 
 func handleBind(req *SOCKS5Request) error {
@@ -57,11 +52,11 @@ func handleBind(req *SOCKS5Request) error {
 }
 
 // RFC 1928 Section 7 defines this procedure for UDP ASSOCIATE
-func handleUDPAssociate(req *SOCKS5Request) error {
+func handleUDPAssociate(req *SOCKS5Request) (byte, error) {
 	// Get an temporary port for UDP relay
 	udpAddr, err := net.ResolveUDPAddr("udp", ":0")
 	if err != nil {
-		return fmt.Errorf("failed to resolve UDP address: %v", err)
+		return ReplyHostUnreachable, fmt.Errorf("failed to resolve UDP address: %v", err)
 	}
 	req.BindAddr.IP = udpAddr.IP
 	req.BindAddr.Port = uint16(udpAddr.Port)
@@ -79,21 +74,16 @@ func handleUDPAssociate(req *SOCKS5Request) error {
 			respCode = ReplyHostUnreachable
 		}
 
-		if err := sendSOCKS5Response(req.ClientConn, &SOCKS5Response{
-			Request:  req,
-			RespCode: respCode,
-		}); err != nil {
-			return fmt.Errorf(("failed to send reply: %v"), err)
-		}
-		return fmt.Errorf("failed to listen on UDP: %v", err)
+		return respCode, fmt.Errorf("failed to listen on UDP: %v", err)
 	}
 	defer udpConn.Close()
 
 	if err := sendSOCKS5Response(req.ClientConn, &SOCKS5Response{
 		Request:  req,
+		BindAddr: req.BindAddr,
 		RespCode: ReplySucceeded,
 	}); err != nil {
-		return fmt.Errorf("failed to send reply: %v", err)
+		return ReplyCloseConnection, fmt.Errorf("failed to send reply: %v", err)
 	}
 
 	// Start relaying data via seperate UDP connection
@@ -104,11 +94,11 @@ func handleUDPAssociate(req *SOCKS5Request) error {
 
 	for i := 0; i < 2; i++ {
 		if err := <-errChannel; err != nil {
-			return fmt.Errorf("error during data relay: %v", err)
+			return ReplyCloseConnection, fmt.Errorf("error during data relay: %v", err)
 		}
 	}
 
-	return nil
+	return 0x00, nil
 }
 
 func relay(src io.Reader, dst io.Writer, errChannel chan error) {

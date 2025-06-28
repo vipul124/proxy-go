@@ -30,14 +30,14 @@ func (server *SOCKS5Server) ServeSOCKS5Conn(conn net.Conn) {
 
 	// Authenticate the client
 	if err := readSOCKS5AuthMethods(conn); err != nil {
-		server.handleError(conn, err)
+		server.handleError(conn, ReplyGeneralFailure, err)
 		return
 	}
 
 	// Parse the request
 	req, err := parseSOCKS5Request(conn)
 	if err != nil {
-		server.handleError(conn, err)
+		server.handleError(conn, ReplyGeneralFailure, fmt.Errorf("failed to parse SOCKS5 request: %v", err))
 		return
 	}
 
@@ -47,7 +47,7 @@ func (server *SOCKS5Server) ServeSOCKS5Conn(conn net.Conn) {
 		ip, err := net.ResolveIPAddr("ip", req.DestAddr.FQDN)
 		if err != nil {
 			err = fmt.Errorf("failed to resolve domain %s: %v", req.DestAddr.FQDN, err)
-			server.handleError(conn, err)
+			server.handleError(conn, ReplyHostUnreachable, err)
 			return
 		}
 		req.DestAddr.IP = ip.IP
@@ -56,45 +56,36 @@ func (server *SOCKS5Server) ServeSOCKS5Conn(conn net.Conn) {
 	// Handle the request based on the command
 	switch req.Cmd {
 	case CmdConnect:
-		if err := handleConnect(req); err != nil {
+		if errCode, err := handleConnect(req); err != nil {
 			err = fmt.Errorf("failed to handle connect: %v", err)
-			server.handleError(conn, err)
+			server.handleError(conn, errCode, err)
 			return
 		}
 	case CmdBind:
 		if !server.enableBind {
 			err := fmt.Errorf("BIND command is not implemented")
-			server.handleError(conn, err)
+			server.handleError(conn, ReplyCommandNotSupported, err)
 			return
 		}
 		if err := handleBind(req); err != nil {
 			err = fmt.Errorf("failed to handle bind: %v", err)
-			server.handleError(conn, err)
+			server.handleError(conn, ReplyGeneralFailure, err)
 			return
 		}
 	case CmdUDPAssociate:
 		if !server.enableUDPAssociate {
 			err := fmt.Errorf("UDP ASSOCIATE command is not implemented")
-			server.handleError(conn, err)
+			server.handleError(conn, ReplyCommandNotSupported, err)
 			return
 		}
-		if err := handleUDPAssociate(req); err != nil {
+		if errCode, err := handleUDPAssociate(req); err != nil {
 			err = fmt.Errorf("failed to handle UDP associate: %v", err)
-			server.handleError(conn, err)
+			server.handleError(conn, errCode, err)
 			return
 		}
 	default:
-		if err := sendSOCKS5Response(conn, &SOCKS5Response{
-			Request:  req,
-			RespCode: ReplyCommandNotSupported,
-		}); err != nil {
-			err = fmt.Errorf(("failed to send reply: %v"), err)
-			server.handleError(conn, err)
-			return
-		}
-
 		err := fmt.Errorf("unsupported command: %d", req.Cmd)
-		server.handleError(conn, err)
+		server.handleError(conn, ReplyCommandNotSupported, err)
 		return
 	}
 }
@@ -117,8 +108,21 @@ func (server *SOCKS5Server) Start(address string) error {
 	}
 }
 
-func (server *SOCKS5Server) handleError(conn net.Conn, err error) {
-	if err != nil {
-		fmt.Println(err)
+func (server *SOCKS5Server) handleError(conn net.Conn, errCode byte, err error) {
+	fmt.Printf("error: %v\n", err)
+
+	// for ReplyCloseConnection, we just close the connection
+	if errCode == ReplyCloseConnection {
+		conn.Close()
+		return
+	}
+
+	if err := sendSOCKS5Response(conn, &SOCKS5Response{
+		Request:  nil,
+		BindAddr: &DefaultAddress,
+		RespCode: errCode,
+	}); err != nil {
+		fmt.Printf("failed to send error response: %v\n", err)
+		conn.Close()
 	}
 }

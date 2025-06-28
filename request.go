@@ -99,6 +99,7 @@ func parseSOCKS5Request(conn net.Conn) (*SOCKS5Request, error) {
 				DestAddr:   addr,
 				ClientConn: conn,
 			},
+			BindAddr: BindAddr,
 			RespCode: ReplyAddressTypeNotSupported,
 		}); err != nil {
 			err = fmt.Errorf(("failed to send reply: %v"), err)
@@ -135,10 +136,10 @@ func sendSOCKS5Response(conn net.Conn, response *SOCKS5Response) error {
 		SOCKS5Version,
 		response.RespCode,
 		0x00,
-		response.Request.BindAddr.Type,
+		response.BindAddr.Type,
 	}
-	resp = append(resp, response.Request.BindAddr.ToByte()...)
-	resp = append(resp, byte(response.Request.BindAddr.Port>>8), byte(response.Request.BindAddr.Port&0xFF))
+	resp = append(resp, response.BindAddr.ToByte()...)
+	resp = append(resp, byte(response.BindAddr.Port>>8), byte(response.BindAddr.Port&0xFF))
 
 	// Send the response
 	_, err := conn.Write(resp)
