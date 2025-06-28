@@ -6,6 +6,23 @@ import (
 )
 
 type SOCKS5Server struct {
+	enableUDPAssociate bool
+	enableBind         bool
+}
+
+func CreateSOCKS5Server() *SOCKS5Server {
+	return &SOCKS5Server{
+		enableUDPAssociate: false,
+		enableBind:         false,
+	}
+}
+
+func (server *SOCKS5Server) EnableUDPAssociate() {
+	server.enableUDPAssociate = true
+}
+
+func (server *SOCKS5Server) EnableBind() {
+	server.enableBind = true
 }
 
 func (server *SOCKS5Server) ServeSOCKS5Conn(conn net.Conn) {
@@ -45,12 +62,22 @@ func (server *SOCKS5Server) ServeSOCKS5Conn(conn net.Conn) {
 			return
 		}
 	case CmdBind:
+		if !server.enableBind {
+			err := fmt.Errorf("BIND command is not implemented")
+			server.handleError(conn, err)
+			return
+		}
 		if err := handleBind(req); err != nil {
 			err = fmt.Errorf("failed to handle bind: %v", err)
 			server.handleError(conn, err)
 			return
 		}
 	case CmdUDPAssociate:
+		if !server.enableUDPAssociate {
+			err := fmt.Errorf("UDP ASSOCIATE command is not implemented")
+			server.handleError(conn, err)
+			return
+		}
 		if err := handleUDPAssociate(req); err != nil {
 			err = fmt.Errorf("failed to handle UDP associate: %v", err)
 			server.handleError(conn, err)
