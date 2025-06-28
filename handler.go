@@ -46,9 +46,9 @@ func handleConnect(req *SOCKS5Request) (byte, error) {
 	return 0x00, nil
 }
 
-func handleBind(req *SOCKS5Request) error {
+func handleBind(req *SOCKS5Request) (byte, error) {
 	// The BIND command is not yet implemented
-	return fmt.Errorf("BIND command is not implemented")
+	return ReplyCommandNotSupported, fmt.Errorf("BIND command is not implemented")
 }
 
 // RFC 1928 Section 7 defines this procedure for UDP ASSOCIATE

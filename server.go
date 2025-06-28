@@ -8,12 +8,16 @@ import (
 type SOCKS5Server struct {
 	enableUDPAssociate bool
 	enableBind         bool
+	authMethods        []AuthMethod
 }
 
 func CreateSOCKS5Server() *SOCKS5Server {
 	return &SOCKS5Server{
 		enableUDPAssociate: false,
 		enableBind:         false,
+		authMethods: []AuthMethod{
+			NoAcceptableMethodsAuth{},
+		},
 	}
 }
 
@@ -25,11 +29,20 @@ func (server *SOCKS5Server) EnableBind() {
 	server.enableBind = true
 }
 
+func (server *SOCKS5Server) AddAuthMethod(method AuthMethod) {
+	for _, m := range server.authMethods {
+		if m.ID() == method.ID() {
+			return
+		}
+	}
+	server.authMethods = append(server.authMethods, method)
+}
+
 func (server *SOCKS5Server) ServeSOCKS5Conn(conn net.Conn) {
 	defer conn.Close()
 
 	// Authenticate the client
-	if err := readSOCKS5AuthMethods(conn); err != nil {
+	if err := server.readSOCKS5AuthMethods(conn); err != nil {
 		server.handleError(conn, ReplyGeneralFailure, err)
 		return
 	}
@@ -67,9 +80,9 @@ func (server *SOCKS5Server) ServeSOCKS5Conn(conn net.Conn) {
 			server.handleError(conn, ReplyCommandNotSupported, err)
 			return
 		}
-		if err := handleBind(req); err != nil {
+		if errCode, err := handleBind(req); err != nil {
 			err = fmt.Errorf("failed to handle bind: %v", err)
-			server.handleError(conn, ReplyGeneralFailure, err)
+			server.handleError(conn, errCode, err)
 			return
 		}
 	case CmdUDPAssociate:
